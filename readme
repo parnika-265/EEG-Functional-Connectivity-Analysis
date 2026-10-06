@@ -1,0 +1,119 @@
+# EEG Functional Connectivity Analysis for ADHD Detection
+
+Comparative analysis of four EEG functional connectivity measures (Pearson Correlation, Coherence, PLV, PLI) for distinguishing adults with ADHD from healthy controls, using RFE feature selection, SMOTE, six classifiers, and SHAP explainability.
+
+**Best result:** Correlation + CatBoost, mean ROC-AUC = **0.7548 ± 0.1673**
+
+---
+
+## Dataset
+
+79 usable participants (one corrupted female ADHD subject excluded).
+
+| Group | Label | Subjects |
+|---|---:|---:|
+| Female Control (FC) | 0 | 13 |
+| Male Control (MC) | 0 | 29 |
+| Female ADHD (FADHD) | 1 | 10 |
+| Male ADHD (MADHD) | 1 | 27 |
+
+Total: 42 controls, 37 ADHD. Files: `FC.mat`, `MC.mat`, `FADHD.mat`, `MADHD.mat`.
+
+- Sampling rate: 256 Hz
+- Channels: F3, F4, Fz, Cz, O1
+- Epochs: non-overlapping 3 s (768 samples)
+
+## Pipeline
+
+```
+EEG -> Butterworth band-pass + amplitude-based artifact handling
+    -> 3 s epochs -> 5 frequency bands
+    -> Connectivity (Correlation / Coherence / PLV / PLI)
+    -> Feature matrices (79 x 40 each)
+    -> Mean imputation -> SMOTE -> StandardScaler -> RFE (40 -> 20)
+    -> Classifier -> Evaluation -> SHAP on best model
+```
+
+**Frequency bands:** Delta (1–4), Theta (4–8), Lower Alpha (8–10), Higher Alpha (10–12), Beta (12–30 Hz).
+
+**Features:** 8 recording cells × 5 bands = 40 per measure. Named as `cell<N>_<ChA>-<ChB>_<Band>` (e.g. `cell6_Cz-F4_LowerAlpha`). Connectivity is computed per epoch and averaged per recording.
+
+**Classifiers:** Logistic Regression, SVM (linear), Random Forest, XGBoost, LightGBM, CatBoost, giving 4 × 6 = 24 combinations.
+
+**Evaluation:** Stratified 10-fold CV (`shuffle=True`, `random_state=42`); no hyperparameter tuning. Metrics: Accuracy, Precision, Recall, F1, ROC-AUC (primary). SMOTE (`k_neighbors=5`) and RFE (`n_features_to_select=20`, `step=5`) run inside the CV pipeline.
+
+## Results
+
+Best classifier per connectivity measure:
+
+| Measure | Best Classifier | Accuracy | ROC-AUC |
+|---|---|---:|---:|
+| Correlation | CatBoost | 0.6589 ± 0.1570 | **0.7548 ± 0.1673** |
+| PLV | SVM | 0.6107 ± 0.1692 | 0.7050 ± 0.1595 |
+| Coherence | Logistic Regression | 0.5929 ± 0.1803 | 0.6471 ± 0.1696 |
+| PLI | LightGBM | 0.5321 ± 0.1753 | 0.5458 ± 0.1969 |
+
+Best model details: Precision 62.83%, Recall 73.33%, F1 67.00% (TP 27, TN 25, FP 17, FN 10).
+
+### SHAP (Correlation + CatBoost)
+
+Top features by mean |SHAP|:
+
+1. `cell6_Cz-F4_LowerAlpha` (0.6274)
+2. `cell7_O1-F4_Delta` (0.5566)
+3. `cell8_Fz-F4_Delta` (0.3650)
+
+The explainability model is refit on all 79 subjects, so it is **not** an independent performance estimate.
+
+## Project Structure
+
+```
+EEG-Functional-Connectivity-Analysis/
+├── datasets/            # FC.mat, MC.mat, FADHD.mat, MADHD.mat
+├── src_codes/
+│   ├── preprocessing.ipynb
+│   ├── Feature_extraction.ipynb
+│   ├── Classification_RFE_SMOTE.ipynb
+│   └── shap_explainability.ipynb
+├── README.md
+└── .gitignore
+```
+
+## How to Run
+
+1. Open the notebooks in Google Colab (or Jupyter).
+2. Mount Drive (Colab) and update data/output paths:
+   ```python
+   from google.colab import drive
+   drive.mount('/content/drive')
+   ```
+3. Run in order:
+   1. `preprocessing.ipynb`
+   2. `Feature_extraction.ipynb` (produces the four 79 × 40 `.npy` matrices, labels, and column names)
+   3. `Classification_RFE_SMOTE.ipynb` (produces `results_*.csv`)
+   4. `shap_explainability.ipynb` (produces SHAP values and plots)
+
+**Libraries:** NumPy, Pandas, SciPy, scikit-learn, imbalanced-learn, XGBoost, LightGBM, CatBoost, SHAP, Matplotlib.
+
+## Limitations
+
+- Small sample (79 subjects) and high fold-to-fold variance.
+- Only selected channel pairs, not a full connectivity network.
+- Fixed classifier settings, no hyperparameter optimization.
+- Not clinically validated; needs larger, independent datasets.
+
+## Future Work
+
+Dynamic connectivity, deep learning (CNN/GNN/Transformer), larger datasets, multimodal inputs, LIME/subject-level explanations, real-time decision support.
+
+## Team
+
+- Machamma Parnika (PES2UG24CS255)
+- Anjana Nallareddy (PES2UG24CS299)
+
+**Faculty Guide:** Pranjali Swapnil Thakre
+Department of Computer Science and Engineering, PES University
+
+## Disclaimer
+
+For research and academic purposes only. Not a clinically validated diagnostic system.
